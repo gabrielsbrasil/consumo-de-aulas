@@ -13,35 +13,51 @@ Cada empresa recebe uma **chave única**. O acesso é feito via link:
 https://gabrielsbrasil.github.io/consumo-de-aulas/?empresa=CHAVE
 ```
 
-Uma empresa nunca enxerga os dados de outra: o dashboard só carrega os dados
-correspondentes à chave informada.
+Uma empresa nunca enxerga os dados de outra: os dados de cada conta ficam em
+um arquivo **criptografado** (AES-256) que só abre com a chave correta.
 
 ## Arquivos
 
 | Arquivo | Função |
 |---|---|
 | `index.html` | O dashboard (arquivo único, sem dependências de build) |
-| `gerar_tokens.py` | Gera a chave de cada empresa e o `chaves_acesso.csv` (Empresa;Chave;Link) |
+| `gerar_data.py` | Pipeline: lê os CSVs de `dados/` e gera os arquivos criptografados em `data/` |
+| `.github/workflows/atualizar.yml` | Automação: roda o pipeline a cada upload em `dados/` e diariamente |
+
+## Atualização de dados (rotina)
+
+Fluxo: subir os CSVs na pasta `dados/` → o GitHub Actions roda `gerar_data.py`
+→ gera um JSON criptografado por empresa em `data/` → o dashboard mostra os
+dados novos automaticamente.
+
+Arquivos de entrada (pasta `dados/`):
+
+| Arquivo | Obrigatório | Conteúdo |
+|---|---|---|
+| `grupos_acesso.csv` | Sim | `codigo;nome` — lista de empresas clientes |
+| `membros.csv` | Sim | `nome;email;grupos` — usuário → empresa |
+| `consumo_curseduca.csv` | Sim | `email;aula;data;origem` — consumo gravado |
+| `aulas_ao_vivo.csv` | Não | `email;aula;data` — presença nas aulas ao vivo |
+| `csms.csv` | Não | `empresa;csm` — CSM responsável por conta |
+
+Linhas com origem "Importação em lote" são ignoradas (histórico duplicado do
+Hubla). Datas aceitas: `AAAA-MM-DD` ou `DD/MM/AAAA`. Nomes de coluna e
+separador (`;` ou `,`) são autodetectados.
 
 ## Chaves de acesso
 
-As chaves são **determinísticas**: geradas por hash do nome da empresa + SALT
-secreto. Rodar o script de novo gera as mesmas chaves — os links enviados aos
-clientes nunca quebram.
+As chaves são **determinísticas**: hash do nome da empresa + SALT secreto
+(GitHub Secret `DASHBOARD_SALT`). Rodar o pipeline de novo gera as mesmas
+chaves — os links enviados aos clientes nunca quebram.
 
-⚠️ **Nunca altere o `SALT` no `gerar_tokens.py` depois de distribuir os links**
-(isso mudaria todas as chaves). O `chaves_acesso.csv` gerado é de uso interno
-(gestor + CSMs) e **não deve ser commitado neste repositório**.
+Para consultar as chaves: aba **Actions → última execução → Artifacts →
+`chaves_acesso`** (CSV `Empresa;Chave;Link`, visível só para quem tem acesso
+ao repositório — nunca é commitado).
 
-## Atualização de dados
-
-Etapa em construção: script Python que cruza a base de aulas da Curseduca com
-o consumo de aulas ao vivo e gera um JSON por empresa (nomeado pela chave),
-atualizado diariamente via GitHub Actions a partir do `grupos_acesso.csv`.
+⚠️ **Nunca altere o `DASHBOARD_SALT` depois de distribuir os links** (isso
+mudaria todas as chaves de todas as empresas).
 
 ## Chaves de teste (dados fictícios)
-
-Enquanto os dados reais não são plugados, o `index.html` contém dados de exemplo:
 
 - `a7f3k9x2` → Checklist Fácil
 - `demo1234` → Empresa Demo

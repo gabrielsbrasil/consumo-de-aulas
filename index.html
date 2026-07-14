@@ -473,8 +473,39 @@ function getToken(){
   const p = new URLSearchParams(location.search);
   return p.get('empresa') || p.get('key') || null;
 }
-function tryAccess(token){
-  if(token && DATA[token]){
+
+/* ---- Dados criptografados por empresa (repo público, conteúdo protegido) ---- */
+async function sha256hex(str){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function decryptPayload(chave, payload){
+  const dec = b64 => Uint8Array.from(atob(b64), c=>c.charCodeAt(0));
+  const salt = dec(payload.salt), iv = dec(payload.iv), ct = dec(payload.data);
+  const keyMat = await crypto.subtle.importKey('raw', new TextEncoder().encode(chave), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey(
+    {name:'PBKDF2', salt, iterations:100000, hash:'SHA-256'},
+    keyMat, {name:'AES-GCM', length:256}, false, ['decrypt']
+  );
+  const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv}, key, ct);
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+async function tryAccess(token){
+  if(!token) return false;
+  // 1) dados reais: data/{hash(chave)}.json criptografado
+  try{
+    const h = await sha256hex(token);
+    const r = await fetch(`data/${h.slice(0,16)}.json`, {cache:'no-store'});
+    if(r.ok){
+      account = await decryptPayload(token, await r.json());
+      $('gate').classList.add('hidden');
+      $('dash').classList.remove('hidden');
+      initDashboard();
+      return true;
+    }
+  }catch(e){ /* segue para dados de demonstração */ }
+  // 2) chaves de demonstração embutidas
+  if(DATA[token]){
     account = DATA[token];
     $('gate').classList.add('hidden');
     $('dash').classList.remove('hidden');
@@ -487,9 +518,9 @@ function showGate(){
   $('gate').classList.remove('hidden');
   $('dash').classList.add('hidden');
 }
-$('gateBtn').addEventListener('click', ()=>{
+$('gateBtn').addEventListener('click', async ()=>{
   const k = $('gateKey').value.trim();
-  if(!tryAccess(k)) $('gateError').style.display='block';
+  if(!(await tryAccess(k))) $('gateError').style.display='block';
   else{
     const u = new URL(location); u.searchParams.set('empresa', k);
     history.replaceState(null,'',u);
@@ -710,9 +741,9 @@ function renderTable(){
 }
 
 /* ---------- Boot ---------- */
-(function(){
+(async function(){
   const t = getToken();
-  if(!tryAccess(t)) showGate();
+  if(!(await tryAccess(t))) showGate();
 })();
 </script>
 </body>
