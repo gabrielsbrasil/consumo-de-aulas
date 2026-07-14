@@ -557,7 +557,7 @@ function initDashboard(){
 
   // período padrão: últimos 12 meses
   const to = todayISO();
-  const from = isoAddDays(to, -365);
+  const from = '2026-04-01';
   $('dateFrom').value = from;
   $('dateTo').value = to;
   $('dateFrom').addEventListener('change', render);
